@@ -3767,6 +3767,8 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 LIBDEFLATEEXPORT void LIBDEFLATEAPI
 libdeflate_free_compressor(struct libdeflate_compressor *c)
 {
+	if (g_num_measurements)
+		printf("avg %"PRIu64"\n", g_total_time / g_num_measurements);
 	libdeflate_aligned_free(c);
 }
 
