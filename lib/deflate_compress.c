@@ -28,8 +28,6 @@
 #include "deflate_compress.h"
 #include "deflate_constants.h"
 
-#include "libdeflate.h"
-
 /******************************************************************************/
 
 /*
@@ -605,8 +603,6 @@ struct libdeflate_compressor {
 			/* The current cost model being used */
 			struct deflate_costs costs;
 
-			struct deflate_codes only_lits_codes;
-
 			struct deflate_costs costs_producing_best_true_cost;
 
 			/*
@@ -800,8 +796,7 @@ heapify_array(u32 A[], unsigned length)
  * Sort the array 'A', which contains 'length' unsigned 32-bit integers.
  *
  * Note: name this function heap_sort() instead of heapsort() to avoid colliding
- * with heapsort() from stdlib.h on BSD-derived systems --- though this isn't
- * necessary when compiling with -D_ANSI_SOURCE, which is the better solution.
+ * with heapsort() from stdlib.h on BSD-derived systems.
  */
 static void
 heap_sort(u32 A[], unsigned length)
@@ -1689,6 +1684,12 @@ do {									\
 /*
  * Choose the best type of block to use (dynamic Huffman, static Huffman, or
  * uncompressed), then output it.
+ *
+ * The uncompressed data of the block is @block_begin[0..@block_length-1].  The
+ * sequence of literals and matches that will be used to compress the block (if
+ * a compressed block is chosen) is given by @sequences if it's non-NULL, or
+ * else @c->p.n.optimum_nodes.  @c->freqs and @c->codes must be already set
+ * according to the literals, matches, and end-of-block symbol.
  */
 static void
 deflate_flush_block(struct libdeflate_compressor *c,
@@ -2830,6 +2831,20 @@ deflate_tally_item_list(struct libdeflate_compressor *c, u32 block_length)
 	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
 }
 
+static void
+deflate_choose_all_literals(struct libdeflate_compressor *c,
+			    const u8 *block, u32 block_length)
+{
+	u32 i;
+
+	deflate_reset_symbol_frequencies(c);
+	for (i = 0; i < block_length; i++)
+		c->freqs.litlen[block[i]]++;
+	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
+
+	deflate_make_huffman_codes(&c->freqs, &c->codes);
+}
+
 /*
  * Compute the exact cost, in bits, that would be required to output the matches
  * and literals described by @c->freqs as a dynamic Huffman block.  The litlen
@@ -3383,13 +3398,8 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 	 * than what the iterative optimization algorithm produces.  Therefore,
 	 * consider using only literals.
 	 */
-	deflate_reset_symbol_frequencies(c);
-	for (i = 0; i < block_length; i++)
-		c->freqs.litlen[block_begin[i]]++;
-	c->freqs.litlen[DEFLATE_END_OF_BLOCK]++;
-	deflate_make_huffman_codes(&c->freqs, &c->codes);
+	deflate_choose_all_literals(c, block_begin, block_length);
 	only_lits_cost = deflate_compute_true_cost(c);
-	c->p.n.only_lits_codes = c->codes;
 
 	/*
 	 * Force the block to really end at the desired length, even if some
@@ -3437,7 +3447,7 @@ deflate_optimize_and_flush_block(struct libdeflate_compressor *c,
 	*used_only_literals = false;
 	if (only_lits_cost < best_true_cost) {
 		/* Using only literals ended up being best! */
-		c->codes = c->p.n.only_lits_codes;
+		deflate_choose_all_literals(c, block_begin, block_length);
 		deflate_set_costs_from_codes(c, &c->codes.lens);
 		seq_.litrunlen_and_length = block_length;
 		seq = &seq_;
