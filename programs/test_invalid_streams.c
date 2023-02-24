@@ -23,7 +23,7 @@ static void
 assert_decompression_error(const u8 *in, size_t in_nbytes)
 {
 	struct libdeflate_decompressor *d;
-	z_stream z;
+	zng_stream z;
 	u8 out[128];
 	const size_t out_nbytes_avail = sizeof(out);
 	size_t actual_out_nbytes;
@@ -40,15 +40,15 @@ assert_decompression_error(const u8 *in, size_t in_nbytes)
 
 	/* zlib, as a control */
 	memset(&z, 0, sizeof(z));
-	res = inflateInit2(&z, -15);
+	res = zng_inflateInit2(&z, -15);
 	ASSERT(res == Z_OK);
 	z.next_in = (void *)in;
 	z.avail_in = in_nbytes;
 	z.next_out = (void *)out;
 	z.avail_out = out_nbytes_avail;
-	res = inflate(&z, Z_FINISH);
+	res = zng_inflate(&z, Z_FINISH);
 	ASSERT(res == Z_DATA_ERROR);
-	inflateEnd(&z);
+	zng_inflateEnd(&z);
 }
 
 /*
