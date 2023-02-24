@@ -170,7 +170,7 @@ get_libz_window_bits(enum format format)
 static bool
 libz_engine_init_compressor(struct compressor *c)
 {
-	z_stream *z;
+	zng_stream *z;
 
 	if (c->level > 9) {
 		msg("libz only supports up to compression level 9");
@@ -186,7 +186,7 @@ libz_engine_init_compressor(struct compressor *c)
 	z->zalloc = NULL;
 	z->zfree = NULL;
 	z->opaque = NULL;
-	if (deflateInit2(z, c->level, Z_DEFLATED,
+	if (zng_deflateInit2(z, c->level, Z_DEFLATED,
 			 get_libz_window_bits(c->format),
 			 8, Z_DEFAULT_STRATEGY) != Z_OK)
 	{
@@ -202,23 +202,23 @@ libz_engine_init_compressor(struct compressor *c)
 static size_t
 libz_engine_compress_bound(struct compressor *c, size_t in_nbytes)
 {
-	return deflateBound(c->private, in_nbytes);
+	return zng_deflateBound(c->private, in_nbytes);
 }
 
 static size_t
 libz_engine_compress(struct compressor *c, const void *in, size_t in_nbytes,
 		     void *out, size_t out_nbytes_avail)
 {
-	z_stream *z = c->private;
+	zng_stream *z = c->private;
 
-	deflateReset(z);
+	zng_deflateReset(z);
 
 	z->next_in = (void *)in;
 	z->avail_in = in_nbytes;
 	z->next_out = out;
 	z->avail_out = out_nbytes_avail;
 
-	if (deflate(z, Z_FINISH) != Z_STREAM_END)
+	if (zng_deflate(z, Z_FINISH) != Z_STREAM_END)
 		return 0;
 
 	return out_nbytes_avail - z->avail_out;
@@ -227,16 +227,16 @@ libz_engine_compress(struct compressor *c, const void *in, size_t in_nbytes,
 static void
 libz_engine_destroy_compressor(struct compressor *c)
 {
-	z_stream *z = c->private;
+	zng_stream *z = c->private;
 
-	deflateEnd(z);
+	zng_deflateEnd(z);
 	free(z);
 }
 
 static bool
 libz_engine_init_decompressor(struct decompressor *d)
 {
-	z_stream *z;
+	zng_stream *z;
 
 	z = xmalloc(sizeof(*z));
 	if (z == NULL)
@@ -247,7 +247,7 @@ libz_engine_init_decompressor(struct decompressor *d)
 	z->zalloc = NULL;
 	z->zfree = NULL;
 	z->opaque = NULL;
-	if (inflateInit2(z, get_libz_window_bits(d->format)) != Z_OK) {
+	if (zng_inflateInit2(z, get_libz_window_bits(d->format)) != Z_OK) {
 		msg("unable to initialize inflater");
 		free(z);
 		return false;
@@ -261,24 +261,24 @@ static bool
 libz_engine_decompress(struct decompressor *d, const void *in, size_t in_nbytes,
 		       void *out, size_t out_nbytes)
 {
-	z_stream *z = d->private;
+	zng_stream *z = d->private;
 
-	inflateReset(z);
+	zng_inflateReset(z);
 
 	z->next_in = (void *)in;
 	z->avail_in = in_nbytes;
 	z->next_out = out;
 	z->avail_out = out_nbytes;
 
-	return inflate(z, Z_FINISH) == Z_STREAM_END && z->avail_out == 0;
+	return zng_inflate(z, Z_FINISH) == Z_STREAM_END && z->avail_out == 0;
 }
 
 static void
 libz_engine_destroy_decompressor(struct decompressor *d)
 {
-	z_stream *z = d->private;
+	zng_stream *z = d->private;
 
-	inflateEnd(z);
+	zng_inflateEnd(z);
 	free(z);
 }
 

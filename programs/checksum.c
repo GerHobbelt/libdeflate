@@ -63,13 +63,13 @@ crc32_libdeflate(u32 crc, const void *buf, size_t len)
 static u32
 adler32_zlib(u32 adler, const void *buf, size_t len)
 {
-	return adler32(adler, buf, len);
+	return zng_adler32(adler, buf, len);
 }
 
 static u32
 crc32_zlib(u32 crc, const void *buf, size_t len)
 {
-	return crc32(crc, buf, len);
+	return zng_crc32(crc, buf, len);
 }
 
 static int

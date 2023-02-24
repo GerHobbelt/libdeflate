@@ -141,23 +141,23 @@ static u64
 do_test_zlib(const char *input_type, const u8 *in, size_t in_nbytes,
 	     u8 *out, size_t out_nbytes_avail)
 {
-	z_stream z;
+	zng_stream z;
 	int res;
 	u64 t;
 	int i;
 
 	memset(&z, 0, sizeof(z));
-	res = inflateInit2(&z, -15);
+	res = zng_inflateInit2(&z, -15);
 	ASSERT(res == Z_OK);
 
 	t = timer_ticks();
 	for (i = 0; i < NUM_ITERATIONS; i++) {
-		inflateReset(&z);
+		zng_inflateReset(&z);
 		z.next_in = (void *)in;
 		z.avail_in = in_nbytes;
 		z.next_out = out;
 		z.avail_out = out_nbytes_avail;
-		res = inflate(&z, Z_FINISH);
+		res = zng_inflate(&z, Z_FINISH);
 		ASSERT(res == Z_BUF_ERROR || res == Z_DATA_ERROR);
 	}
 	t = timer_ticks() - t;
@@ -165,7 +165,7 @@ do_test_zlib(const char *input_type, const u8 *in, size_t in_nbytes,
 	printf("[%s, zlib      ]: %"PRIu64" KB/s\n", input_type,
 	       timer_KB_per_s((u64)in_nbytes * NUM_ITERATIONS, t));
 
-	inflateEnd(&z);
+	zng_inflateEnd(&z);
 	return t;
 }
 

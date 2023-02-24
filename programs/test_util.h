@@ -30,7 +30,7 @@
 
 #include "prog_util.h"
 
-#include <zlib.h> /* for comparison purposes */
+#include <zlib-ng.h> /* for comparison purposes */
 
 #if defined(__GNUC__) || __has_attribute(noreturn)
 # define _noreturn __attribute__((noreturn))

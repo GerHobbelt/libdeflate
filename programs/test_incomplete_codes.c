@@ -35,25 +35,25 @@ verify_decompression_zlib(const u8 *in, size_t in_nbytes,
 			  u8 *out, size_t out_nbytes_avail,
 			  const u8 *expected_out, size_t expected_out_nbytes)
 {
-	z_stream z;
+	zng_stream z;
 	int res;
 	size_t actual_out_nbytes;
 
 	memset(&z, 0, sizeof(z));
-	res = inflateInit2(&z, -15);
+	res = zng_inflateInit2(&z, -15);
 	ASSERT(res == Z_OK);
 
 	z.next_in = (void *)in;
 	z.avail_in = in_nbytes;
 	z.next_out = (void *)out;
 	z.avail_out = out_nbytes_avail;
-	res = inflate(&z, Z_FINISH);
+	res = zng_inflate(&z, Z_FINISH);
 	ASSERT(res == Z_STREAM_END);
 	actual_out_nbytes = out_nbytes_avail - z.avail_out;
 	ASSERT(actual_out_nbytes == expected_out_nbytes);
 	ASSERT(memcmp(out, expected_out, actual_out_nbytes) == 0);
 
-	inflateEnd(&z);
+	zng_inflateEnd(&z);
 }
 
 static void
