@@ -104,8 +104,11 @@
 	(void)a, (void)b, (void)c, (void)d, (void)e, (void)f
 #endif
 
-/* SSE2 implementation */
-#if HAVE_SSE2_INTRIN
+/*
+ * SSE2 and AVX2 implementations.  They are very similar; the AVX2
+ * implementation just uses twice the vector width as the SSE2 one.
+ */
+#if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
 #  define adler32_sse2		adler32_sse2
 #  define FUNCNAME		adler32_sse2
 #  define FUNCNAME_CHUNK	adler32_sse2_chunk
@@ -117,11 +120,7 @@
  * would behave incorrectly.
  */
 #  define IMPL_MAX_CHUNK_LEN	(32 * (0x7FFF / 0xFF))
-#  if HAVE_SSE2_NATIVE
-#    define ATTRIBUTES
-#  else
-#    define ATTRIBUTES		_target_attribute("sse2")
-#  endif
+#  define ATTRIBUTES		_target_attribute("sse2")
 static forceinline ATTRIBUTES void
 adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 {
@@ -201,24 +200,14 @@ adler32_sse2_chunk(const __m128i *p, const __m128i *const end, u32 *s1, u32 *s2)
 	ADLER32_FINISH_VEC_CHUNK_128(s1, s2, v_s1, v_s2, 1);
 }
 #  include "../adler32_vec_template.h"
-#endif /* HAVE_SSE2_INTRIN */
 
-/*
- * AVX2 implementation.  Basically the same as the SSE2 one, but with the vector
- * width doubled.
- */
-#if HAVE_AVX2_INTRIN
 #  define adler32_avx2		adler32_avx2
 #  define FUNCNAME		adler32_avx2
 #  define FUNCNAME_CHUNK	adler32_avx2_chunk
 #  define IMPL_ALIGNMENT	32
 #  define IMPL_SEGMENT_LEN	64
 #  define IMPL_MAX_CHUNK_LEN	(64 * (0x7FFF / 0xFF))
-#  if HAVE_AVX2_NATIVE
-#    define ATTRIBUTES
-#  else
-#    define ATTRIBUTES		_target_attribute("avx2")
-#  endif
+#  define ATTRIBUTES		_target_attribute("avx2")
 static forceinline ATTRIBUTES void
 adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 {
@@ -272,25 +261,21 @@ adler32_avx2_chunk(const __m256i *p, const __m256i *const end, u32 *s1, u32 *s2)
 	ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1, v_s2, 1);
 }
 #  include "../adler32_vec_template.h"
-#endif /* HAVE_AVX2_INTRIN */
+#endif
 
 /*
  * AVX2/AVX-VNNI implementation.  This is similar to the AVX512BW/AVX512VNNI
  * implementation, but instead of using AVX-512 it uses AVX2 plus AVX-VNNI.
  * AVX-VNNI adds dot product instructions to CPUs without AVX-512.
  */
-#if HAVE_AVX2_INTRIN && HAVE_AVXVNNI_INTRIN
+#if GCC_PREREQ(11, 1) || CLANG_PREREQ(12, 0, 13000000) || MSVC_PREREQ(1930)
 #  define adler32_avx2_vnni	adler32_avx2_vnni
 #  define FUNCNAME		adler32_avx2_vnni
 #  define FUNCNAME_CHUNK	adler32_avx2_vnni_chunk
 #  define IMPL_ALIGNMENT	32
 #  define IMPL_SEGMENT_LEN	128
 #  define IMPL_MAX_CHUNK_LEN	MAX_CHUNK_LEN
-#  if HAVE_AVX2_NATIVE && HAVE_AVXVNNI_NATIVE
-#    define ATTRIBUTES
-#  else
-#    define ATTRIBUTES		_target_attribute("avx2,avxvnni")
-#  endif
+#  define ATTRIBUTES		_target_attribute("avx2,avxvnni")
 static forceinline ATTRIBUTES void
 adler32_avx2_vnni_chunk(const __m256i *p, const __m256i *const end,
 			u32 *s1, u32 *s2)
@@ -349,24 +334,20 @@ adler32_avx2_vnni_chunk(const __m256i *p, const __m256i *const end,
 	ADLER32_FINISH_VEC_CHUNK_256(s1, s2, v_s1_a, v_s2_a, 1);
 }
 #  include "../adler32_vec_template.h"
-#endif /* HAVE_AVX2_INTRIN && HAVE_AVXVNNI_INTRIN */
+#endif
 
 /*
  * AVX512BW/AVX512VNNI implementation.  Uses the vpdpbusd (dot product)
  * instruction from AVX512VNNI.
  */
-#if HAVE_AVX512BW_INTRIN && HAVE_AVX512VNNI_INTRIN
+#if GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 10000000) || MSVC_PREREQ(1920)
 #  define adler32_avx512_vnni	adler32_avx512_vnni
 #  define FUNCNAME		adler32_avx512_vnni
 #  define FUNCNAME_CHUNK	adler32_avx512_vnni_chunk
 #  define IMPL_ALIGNMENT	64
 #  define IMPL_SEGMENT_LEN	128
 #  define IMPL_MAX_CHUNK_LEN	MAX_CHUNK_LEN
-#  if HAVE_AVX512BW_NATIVE && HAVE_AVX512VNNI_NATIVE
-#    define ATTRIBUTES
-#  else
-#    define ATTRIBUTES		_target_attribute("avx512bw,avx512vnni")
-#  endif
+#  define ATTRIBUTES		_target_attribute("avx512bw,avx512vnni")
 static forceinline ATTRIBUTES void
 adler32_avx512_vnni_chunk(const __m512i *p, const __m512i *const end,
 			  u32 *s1, u32 *s2)
@@ -414,7 +395,7 @@ adler32_avx512_vnni_chunk(const __m512i *p, const __m512i *const end,
 	ADLER32_FINISH_VEC_CHUNK_512(s1, s2, v_s1_a, v_s2_a, 0);
 }
 #  include "../adler32_vec_template.h"
-#endif /* HAVE_AVX512BW_INTRIN && HAVE_AVX512VNNI_INTRIN */
+#endif
 
 static inline adler32_func_t
 arch_select_adler32_func(void)
