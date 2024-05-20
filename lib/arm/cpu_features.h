@@ -55,12 +55,6 @@
 #define ARM_CPU_FEATURE_SHA3		(1 << 4)
 #define ARM_CPU_FEATURE_DOTPROD		(1 << 5)
 
-#define HAVE_NEON(features)	(HAVE_NEON_NATIVE    || ((features) & ARM_CPU_FEATURE_NEON))
-#define HAVE_PMULL(features)	(HAVE_PMULL_NATIVE   || ((features) & ARM_CPU_FEATURE_PMULL))
-#define HAVE_CRC32(features)	(HAVE_CRC32_NATIVE   || ((features) & ARM_CPU_FEATURE_CRC32))
-#define HAVE_SHA3(features)	(HAVE_SHA3_NATIVE    || ((features) & ARM_CPU_FEATURE_SHA3))
-#define HAVE_DOTPROD(features)	(HAVE_DOTPROD_NATIVE || ((features) & ARM_CPU_FEATURE_DOTPROD))
-
 #if HAVE_DYNAMIC_ARM_CPU_FEATURES
 #define ARM_CPU_FEATURES_KNOWN		(1U << 31)
 extern volatile u32 libdeflate_arm_cpu_features;
@@ -78,9 +72,11 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #endif /* !HAVE_DYNAMIC_ARM_CPU_FEATURES */
 
 /* NEON */
-#if defined(__ARM_NEON) || defined(ARCH_ARM64)
+#if defined(__ARM_NEON) || (defined(_MSC_VER) && defined(ARCH_ARM64))
+#  define HAVE_NEON(features)	1
 #  define HAVE_NEON_NATIVE	1
 #else
+#  define HAVE_NEON(features)	((features) & ARM_CPU_FEATURE_NEON)
 #  define HAVE_NEON_NATIVE	0
 #endif
 /*
@@ -88,24 +84,24 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
  * NEON enabled already.  Exception: with gcc 6.1 and later (r230411 for arm32,
  * r226563 for arm64), hardware floating point support is sufficient.
  */
-#if HAVE_NEON_NATIVE || \
-	(HAVE_DYNAMIC_ARM_CPU_FEATURES && GCC_PREREQ(6, 1) && defined(__ARM_FP))
+#if (defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)) && \
+	(HAVE_NEON_NATIVE || (GCC_PREREQ(6, 1) && defined(__ARM_FP)))
 #  define HAVE_NEON_INTRIN	1
+#  include <arm_neon.h>
 #else
 #  define HAVE_NEON_INTRIN	0
 #endif
 
 /* PMULL */
 #ifdef __ARM_FEATURE_CRYPTO
-#  define HAVE_PMULL_NATIVE	1
+#  define HAVE_PMULL(features)	1
 #else
-#  define HAVE_PMULL_NATIVE	0
+#  define HAVE_PMULL(features)	((features) & ARM_CPU_FEATURE_PMULL)
 #endif
-#if defined(ARCH_ARM64) && \
-	(HAVE_PMULL_NATIVE || \
-	 (HAVE_DYNAMIC_ARM_CPU_FEATURES && \
-	  (GCC_PREREQ(6, 1) || defined(__clang__) || defined(_MSC_VER))))
-#  define HAVE_PMULL_INTRIN	CPU_IS_LITTLE_ENDIAN() /* untested on big endian */
+#if defined(ARCH_ARM64) && HAVE_NEON_INTRIN && \
+	(GCC_PREREQ(6, 1) || defined(__clang__) || defined(_MSC_VER)) && \
+	CPU_IS_LITTLE_ENDIAN() /* untested on big endian */
+#  define HAVE_PMULL_INTRIN	1
    /* Work around MSVC's vmull_p64() taking poly64x1_t instead of poly64_t */
 #  ifdef _MSC_VER
 #    define compat_vmull_p64(a, b)  vmull_p64(vcreate_p64(a), vcreate_p64(b))
@@ -115,110 +111,108 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #else
 #  define HAVE_PMULL_INTRIN	0
 #endif
-/*
- * Set USE_PMULL_TARGET_EVEN_IF_NATIVE if a workaround for a gcc bug that was
- * fixed by commit 11a113d501ff ("aarch64: Simplify feature definitions") in gcc
- * 13 is needed.  A minimal program that fails to build due to this bug when
- * compiled with -mcpu=emag, at least with gcc 10 through 12, is:
- *
- *    static inline __attribute__((always_inline,target("+crypto"))) void f() {}
- *    void g() { f(); }
- *
- * The error is:
- *
- *    error: inlining failed in call to ‘always_inline’ ‘f’: target specific option mismatch
- *
- * The workaround is to explicitly add the crypto target to the non-inline
- * function g(), even though this should not be required due to -mcpu=emag
- * enabling 'crypto' natively and causing __ARM_FEATURE_CRYPTO to be defined.
- */
-#if HAVE_PMULL_NATIVE && defined(ARCH_ARM64) && \
-		GCC_PREREQ(6, 1) && !GCC_PREREQ(13, 1)
-#  define USE_PMULL_TARGET_EVEN_IF_NATIVE	1
-#else
-#  define USE_PMULL_TARGET_EVEN_IF_NATIVE	0
-#endif
 
 /* CRC32 */
 #ifdef __ARM_FEATURE_CRC32
-#  define HAVE_CRC32_NATIVE	1
+#  define HAVE_CRC32(features)	1
 #else
-#  define HAVE_CRC32_NATIVE	0
+#  define HAVE_CRC32(features)	((features) & ARM_CPU_FEATURE_CRC32)
 #endif
-#if defined(ARCH_ARM64) && (HAVE_CRC32_NATIVE || defined(__GNUC__) || \
-			    defined(__clang__) || defined(_MSC_VER))
+#if defined(ARCH_ARM64) && \
+	(defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER))
 #  define HAVE_CRC32_INTRIN	1
+#  if defined(__GNUC__) || defined(__clang__)
+#    include <arm_acle.h>
+#  endif
+   /*
+    * Use an inline assembly fallback for clang 15 and earlier, which only
+    * defined the crc32 intrinsics when crc32 is enabled in the main target.
+    */
+#  if defined(__clang__) && !CLANG_PREREQ(16, 0, 16000000) && \
+	!defined(__ARM_FEATURE_CRC32)
+#    undef __crc32b
+#    define __crc32b(a, b)					\
+	({ uint32_t res;					\
+	   __asm__("crc32b %w0, %w1, %w2"			\
+		   : "=r" (res) : "r" (a), "r" (b));		\
+	   res; })
+#    undef __crc32h
+#    define __crc32h(a, b)					\
+	({ uint32_t res;					\
+	   __asm__("crc32h %w0, %w1, %w2"			\
+		   : "=r" (res) : "r" (a), "r" (b));		\
+	   res; })
+#    undef __crc32w
+#    define __crc32w(a, b)					\
+	({ uint32_t res;					\
+	   __asm__("crc32w %w0, %w1, %w2"			\
+		   : "=r" (res) : "r" (a), "r" (b));		\
+	   res; })
+#    undef __crc32d
+#    define __crc32d(a, b)					\
+	({ uint32_t res;					\
+	   __asm__("crc32x %w0, %w1, %2"			\
+		   : "=r" (res) : "r" (a), "r" (b));		\
+	   res; })
+#    pragma clang diagnostic ignored "-Wgnu-statement-expression"
+#  endif
 #else
 #  define HAVE_CRC32_INTRIN	0
 #endif
 
 /* SHA3 (needed for the eor3 instruction) */
-#if defined(ARCH_ARM64) && !defined(_MSC_VER)
-#  ifdef __ARM_FEATURE_SHA3
-#    define HAVE_SHA3_NATIVE	1
-#  else
-#    define HAVE_SHA3_NATIVE	0
-#  endif
-#  define HAVE_SHA3_TARGET	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
-				 (GCC_PREREQ(8, 1) /* r256478 */ || \
-				  CLANG_PREREQ(7, 0, 10010463) /* r338010 */))
-#  define HAVE_SHA3_INTRIN	(HAVE_NEON_INTRIN && \
-				 (HAVE_SHA3_NATIVE || HAVE_SHA3_TARGET) && \
-				 (GCC_PREREQ(9, 1) /* r268049 */ || \
-				  CLANG_PREREQ(13, 0, 13160000)))
+#ifdef __ARM_FEATURE_SHA3
+#  define HAVE_SHA3(features)	1
 #else
-#  define HAVE_SHA3_NATIVE	0
-#  define HAVE_SHA3_TARGET	0
+#  define HAVE_SHA3(features)	((features) & ARM_CPU_FEATURE_SHA3)
+#endif
+#if defined(ARCH_ARM64) && HAVE_NEON_INTRIN && \
+	(GCC_PREREQ(9, 1) /* r268049 */ || \
+	 CLANG_PREREQ(7, 0, 10010463) /* r338010 */)
+#  define HAVE_SHA3_INTRIN	1
+   /*
+    * Use an inline assembly fallback for clang 15 and earlier, which only
+    * defined the sha3 intrinsics when sha3 is enabled in the main target.
+    */
+#  if defined(__clang__) && !CLANG_PREREQ(16, 0, 16000000) && \
+	!defined(__ARM_FEATURE_SHA3)
+#    undef veor3q_u8
+#    define veor3q_u8(a, b, c)					\
+	({ uint8x16_t res;					\
+	   __asm__("eor3 %0.16b, %1.16b, %2.16b, %3.16b"	\
+		   : "=w" (res) : "w" (a), "w" (b), "w" (c));	\
+	   res; })
+#    pragma clang diagnostic ignored "-Wgnu-statement-expression"
+#  endif
+#else
 #  define HAVE_SHA3_INTRIN	0
 #endif
 
 /* dotprod */
-#ifdef ARCH_ARM64
-#  ifdef __ARM_FEATURE_DOTPROD
-#    define HAVE_DOTPROD_NATIVE	1
-#  else
-#    define HAVE_DOTPROD_NATIVE	0
-#  endif
-#  if HAVE_DOTPROD_NATIVE || \
-	(HAVE_DYNAMIC_ARM_CPU_FEATURES && \
-	 (GCC_PREREQ(8, 1) || CLANG_PREREQ(7, 0, 10010000) || \
-	  defined(_MSC_VER)))
-#    define HAVE_DOTPROD_INTRIN	1
-#  else
-#    define HAVE_DOTPROD_INTRIN	0
+#ifdef __ARM_FEATURE_DOTPROD
+#  define HAVE_DOTPROD(features)	1
+#else
+#  define HAVE_DOTPROD(features)	((features) & ARM_CPU_FEATURE_DOTPROD)
+#endif
+#if defined(ARCH_ARM64) && HAVE_NEON_INTRIN && \
+	(GCC_PREREQ(8, 1) || CLANG_PREREQ(7, 0, 10010000) || defined(_MSC_VER))
+#  define HAVE_DOTPROD_INTRIN	1
+   /*
+    * Use an inline assembly fallback for clang 15 and earlier, which only
+    * defined the dotprod intrinsics when dotprod is enabled in the main target.
+    */
+#  if defined(__clang__) && !CLANG_PREREQ(16, 0, 16000000) && \
+	!defined(__ARM_FEATURE_DOTPROD)
+#    undef vdotq_u32
+#    define vdotq_u32(a, b, c)					\
+	({ uint32x4_t res = (a);				\
+	   __asm__("udot %0.4s, %1.16b, %2.16b"			\
+		   : "+w" (res) : "w" (b), "w" (c));		\
+	   res; })
+#    pragma clang diagnostic ignored "-Wgnu-statement-expression"
 #  endif
 #else
-#  define HAVE_DOTPROD_NATIVE	0
 #  define HAVE_DOTPROD_INTRIN	0
-#endif
-
-/*
- * Work around bugs in arm_acle.h and arm_neon.h where sometimes intrinsics are
- * only defined when the corresponding __ARM_FEATURE_* macro is defined.  The
- * intrinsics actually work in target attribute functions too if they are
- * defined, though, so work around this by temporarily defining the
- * corresponding __ARM_FEATURE_* macros while including the headers.
- */
-#if HAVE_CRC32_INTRIN && !HAVE_CRC32_NATIVE && defined(__clang__)
-#  define __ARM_FEATURE_CRC32	1
-#endif
-#if HAVE_SHA3_INTRIN && !HAVE_SHA3_NATIVE && defined(__clang__)
-#  define __ARM_FEATURE_SHA3	1
-#endif
-#if HAVE_DOTPROD_INTRIN && !HAVE_DOTPROD_NATIVE && defined(__clang__)
-#  define __ARM_FEATURE_DOTPROD	1
-#endif
-#if HAVE_CRC32_INTRIN && !HAVE_CRC32_NATIVE && defined(__clang__)
-#  include <arm_acle.h>
-#  undef __ARM_FEATURE_CRC32
-#endif
-#if HAVE_SHA3_INTRIN && !HAVE_SHA3_NATIVE && defined(__clang__)
-#  include <arm_neon.h>
-#  undef __ARM_FEATURE_SHA3
-#endif
-#if HAVE_DOTPROD_INTRIN && !HAVE_DOTPROD_NATIVE && defined(__clang__)
-#  include <arm_neon.h>
-#  undef __ARM_FEATURE_DOTPROD
 #endif
 
 #endif /* ARCH_ARM32 || ARCH_ARM64 */

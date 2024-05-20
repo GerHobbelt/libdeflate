@@ -45,17 +45,11 @@
  * variable chunk length wouldn't help much, so we just support a fixed length.
  */
 #if HAVE_CRC32_INTRIN
-#  if HAVE_CRC32_NATIVE
-#    define ATTRIBUTES
-#  elif defined(__clang__)
+#  ifdef __clang__
 #    define ATTRIBUTES	_target_attribute("crc")
 #  else
 #    define ATTRIBUTES	_target_attribute("+crc")
 #  endif
-
-#ifndef _MSC_VER
-#  include <arm_acle.h>
-#endif
 
 /*
  * Combine the CRCs for 4 adjacent chunks of length L = CRC32_FIXED_CHUNK_LEN
@@ -226,18 +220,11 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
  * for implementations that use pmull for folding the data itself.
  */
 #if HAVE_CRC32_INTRIN && HAVE_PMULL_INTRIN
-#  if HAVE_CRC32_NATIVE && HAVE_PMULL_NATIVE && !USE_PMULL_TARGET_EVEN_IF_NATIVE
-#    define ATTRIBUTES
-#  elif defined(__clang__)
+#  ifdef __clang__
 #    define ATTRIBUTES	_target_attribute("crc,aes")
 #  else
 #    define ATTRIBUTES	_target_attribute("+crc,+crypto")
 #  endif
-
-#ifndef _MSC_VER
-#  include <arm_acle.h>
-#endif
-#include <arm_neon.h>
 
 /* Do carryless multiplication of two 32-bit values. */
 static forceinline ATTRIBUTES u64
@@ -422,21 +409,19 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 #if HAVE_PMULL_INTRIN
 #  define crc32_arm_pmullx4	crc32_arm_pmullx4
 #  define SUFFIX			 _pmullx4
-#  if HAVE_PMULL_NATIVE && !USE_PMULL_TARGET_EVEN_IF_NATIVE
-#    define ATTRIBUTES
-#  elif defined(__clang__)
+#  ifdef __clang__
      /*
       * This used to use "crypto", but that stopped working with clang 16.
       * Now only "aes" works.  "aes" works with older versions too, so use
       * that.  No "+" prefix; clang 15 and earlier doesn't accept that.
       */
-#    define ATTRIBUTES  _target_attribute("aes")
+#    define ATTRIBUTES	_target_attribute("aes")
 #  else
      /*
       * With gcc, only "+crypto" works.  Both the "+" prefix and the
       * "crypto" (not "aes") are essential...
       */
-#    define ATTRIBUTES  _target_attribute("+crypto")
+#    define ATTRIBUTES	_target_attribute("+crypto")
 #  endif
 #  define ENABLE_EOR3		0
 #  include "crc32_pmull_helpers.h"
@@ -545,14 +530,10 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 #if HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN
 #  define crc32_arm_pmullx12_crc	crc32_arm_pmullx12_crc
 #  define SUFFIX				 _pmullx12_crc
-#  if HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && !USE_PMULL_TARGET_EVEN_IF_NATIVE
-#    define ATTRIBUTES
+#  ifdef __clang__
+#    define ATTRIBUTES	_target_attribute("aes,crc")
 #  else
-#    ifdef __clang__
-#      define ATTRIBUTES  _target_attribute("aes,crc")
-#    else
-#      define ATTRIBUTES  _target_attribute("+crypto,+crc")
-#    endif
+#    define ATTRIBUTES	_target_attribute("+crypto,+crc")
 #  endif
 #  define ENABLE_EOR3	0
 #  include "crc32_pmull_wide.h"
@@ -563,30 +544,21 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
  *
  * This like crc32_arm_pmullx12_crc(), but it adds the eor3 instruction (from
  * the sha3 extension) for even better performance.
- *
- * Note: we require HAVE_SHA3_TARGET (or HAVE_SHA3_NATIVE) rather than
- * HAVE_SHA3_INTRIN, as we have an inline asm fallback for eor3.
  */
-#if HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && \
-	(HAVE_SHA3_TARGET || HAVE_SHA3_NATIVE)
+#if HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && HAVE_SHA3_INTRIN
 #  define crc32_arm_pmullx12_crc_eor3	crc32_arm_pmullx12_crc_eor3
 #  define SUFFIX				 _pmullx12_crc_eor3
-#  if HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && HAVE_SHA3_NATIVE && \
-	!USE_PMULL_TARGET_EVEN_IF_NATIVE
-#    define ATTRIBUTES
+#  ifdef __clang__
+#    define ATTRIBUTES	_target_attribute("aes,crc,sha3")
+   /*
+    * With gcc, arch=armv8.2-a is needed for the sha3 intrinsics, unless the
+    * default target is armv8.3-a or later in which case it must be omitted.
+    * armv8.3-a or later can be detected by checking for __ARM_FEATURE_JCVT.
+    */
+#  elif defined(__ARM_FEATURE_JCVT)
+#    define ATTRIBUTES	_target_attribute("+crypto,+crc,+sha3")
 #  else
-#    ifdef __clang__
-#      define ATTRIBUTES  _target_attribute("aes,crc,sha3")
-     /*
-      * With gcc, arch=armv8.2-a is needed for the sha3 intrinsics, unless the
-      * default target is armv8.3-a or later in which case it must be omitted.
-      * armv8.3-a or later can be detected by checking for __ARM_FEATURE_JCVT.
-      */
-#    elif defined(__ARM_FEATURE_JCVT)
-#      define ATTRIBUTES  _target_attribute("+crypto,+crc,+sha3")
-#    else
-#      define ATTRIBUTES  _target_attribute("arch=armv8.2-a+crypto+crc+sha3")
-#    endif
+#    define ATTRIBUTES	_target_attribute("arch=armv8.2-a+crypto+crc+sha3")
 #  endif
 #  define ENABLE_EOR3	1
 #  include "crc32_pmull_wide.h"
