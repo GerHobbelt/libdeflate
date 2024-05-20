@@ -67,12 +67,11 @@ sort_by_speed() {
 }
 
 disable_cpu_feature() {
-	local name="$1"
+	LIBDEFLATE_DISABLE_CPU_FEATURES+=",$1"
 	shift
-	local extra_cflags=("$@")
-
-	LIBDEFLATE_DISABLE_CPU_FEATURES+=",$name"
-	EXTRA_CFLAGS+=("${extra_cflags[@]}")
+	if (( $# > 0 )); then
+		EXTRA_CFLAGS+=("$@")
+	fi
 }
 
 cleanup() {
@@ -114,15 +113,14 @@ export LIBDEFLATE_DISABLE_CPU_FEATURES=""
 {
 case $ARCH in
 i386|x86_64)
-	if have_cpu_features vpclmulqdq avx512f avx512vl; then
-		do_benchmark "VPCLMULQDQ/AVX512F/AVX512VL"
+	if have_cpu_features vpclmulqdq pclmulqdq avx512f avx512vl; then
+		do_benchmark "VPCLMULQDQ/AVX512/VL512"
+		disable_cpu_feature "zmm"
+		do_benchmark "VPCLMULQDQ/AVX512/VL256"
+		disable_cpu_feature "avx512vl" "-mno-avx512vl"
 		disable_cpu_feature "avx512f" "-mno-avx512f"
 	fi
-	if have_cpu_features vpclmulqdq avx512vl; then
-		do_benchmark "VPCLMULQDQ/AVX512VL"
-		disable_cpu_feature "avx512vl" "-mno-avx512vl"
-	fi
-	if have_cpu_features vpclmulqdq avx2; then
+	if have_cpu_features vpclmulqdq pclmulqdq avx2; then
 		do_benchmark "VPCLMULQDQ/AVX2"
 		disable_cpu_feature "vpclmulqdq" "-mno-vpclmulqdq"
 	fi
@@ -159,6 +157,11 @@ echo
 {
 case $ARCH in
 i386|x86_64)
+	if have_cpu_features avx512_vnni avx512bw; then
+		do_benchmark "AVX512VNNI/AVX512BW"
+		disable_cpu_feature "avx512vnni" "-mno-avx512vnni"
+		disable_cpu_feature "avx512bw" "-mno-avx512bw"
+	fi
 	if have_cpu_feature avx2; then
 		do_benchmark "AVX2"
 		disable_cpu_feature "avx2" "-mno-avx2"

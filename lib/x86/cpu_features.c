@@ -90,16 +90,19 @@ static const struct cpu_feature x86_cpu_feature_table[] = {
 	{X86_CPU_FEATURE_AVX,		"avx"},
 	{X86_CPU_FEATURE_AVX2,		"avx2"},
 	{X86_CPU_FEATURE_BMI2,		"bmi2"},
+	{X86_CPU_FEATURE_ZMM,		"zmm"},
 	{X86_CPU_FEATURE_AVX512F,	"avx512f"},
+	{X86_CPU_FEATURE_AVX512BW,	"avx512bw"},
 	{X86_CPU_FEATURE_AVX512VL,	"avx512vl"},
 	{X86_CPU_FEATURE_VPCLMULQDQ,	"vpclmulqdq"},
+	{X86_CPU_FEATURE_AVX512VNNI,	"avx512vnni"},
 };
 
 volatile u32 libdeflate_x86_cpu_features = 0;
 
 /*
- * Don't use 512-bit vectors on Intel CPUs 10th generation and older, due to the
- * downclocking penalty.
+ * Don't use 512-bit vectors on Intel CPUs before Rocket Lake and Sapphire
+ * Rapids, due to the downclocking penalty.
  */
 static inline bool
 allow_512bit_vectors(const u32 manufacturer[3], u32 family, u32 model)
@@ -165,13 +168,19 @@ void libdeflate_init_x86_cpu_features(void)
 		features |= X86_CPU_FEATURE_AVX2;
 	if (b & (1 << 8))
 		features |= X86_CPU_FEATURE_BMI2;
-	if ((b & (1 << 16)) && ((xcr0 & 0xe6) == 0xe6) &&
+	if (((xcr0 & 0xe6) == 0xe6) &&
 	    allow_512bit_vectors(manufacturer, family, model))
+		features |= X86_CPU_FEATURE_ZMM;
+	if ((b & (1 << 16)) && ((xcr0 & 0xe6) == 0xe6))
 		features |= X86_CPU_FEATURE_AVX512F;
-	if ((b & (1U << 31)) && ((xcr0 & 0xa6) == 0xa6))
+	if ((b & (1 << 30)) && ((xcr0 & 0xe6) == 0xe6))
+		features |= X86_CPU_FEATURE_AVX512BW;
+	if ((b & (1U << 31)) && ((xcr0 & 0xe6) == 0xe6))
 		features |= X86_CPU_FEATURE_AVX512VL;
 	if ((c & (1 << 10)) && ((xcr0 & 0x6) == 0x6))
 		features |= X86_CPU_FEATURE_VPCLMULQDQ;
+	if ((c & (1 << 11)) && ((xcr0 & 0xe6) == 0xe6))
+		features |= X86_CPU_FEATURE_AVX512VNNI;
 
 out:
 	disable_cpu_features_for_testing(&features, x86_cpu_feature_table,
