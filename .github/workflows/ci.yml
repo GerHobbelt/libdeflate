@@ -12,7 +12,7 @@ jobs:
     env:
       CC: ${{ matrix.compiler }}
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -22,18 +22,29 @@ jobs:
       run: $CC -O2 -Wall -Werror lib/*{,/*}.c programs/{gzip,prog_util,tgetopt}.c -o libdeflate-gzip
 
   other-arch-build-and-test:
-    name: Build and test (${{ matrix.arch }}, Debian Bullseye, ${{ matrix.compiler }})
+    name: Build and test (${{ matrix.arch }}, ${{ matrix.distro }}, ${{ matrix.compiler }})
     strategy:
       matrix:
-        arch: [armv6, armv7, aarch64, s390x, ppc64le]
-        compiler: [gcc, clang]
+        include:
+        - { arch: armv6, distro: bullseye, compiler: gcc }
+        - { arch: armv6, distro: bullseye, compiler: clang }
+        - { arch: armv7, distro: bullseye, compiler: gcc }
+        - { arch: armv7, distro: bullseye, compiler: clang }
+        - { arch: aarch64, distro: bullseye, compiler: gcc }
+        - { arch: aarch64, distro: bullseye, compiler: clang }
+        - { arch: s390x, distro: bullseye, compiler: gcc }
+        - { arch: s390x, distro: bullseye, compiler: clang }
+        - { arch: ppc64le, distro: bullseye, compiler: gcc }
+        - { arch: ppc64le, distro: bullseye, compiler: clang }
+        - { arch: riscv64, distro: ubuntu_latest, compiler: gcc }
+        - { arch: riscv64, distro: ubuntu_latest, compiler: clang }
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: uraimo/run-on-arch-action@v2.5.0
         with:
           arch: ${{ matrix.arch }}
-          distro: bullseye
+          distro: ${{ matrix.distro }}
           githubToken: ${{ github.token }}
           install: |
             apt-get update
@@ -51,7 +62,7 @@ jobs:
     env:
       CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - run: cmake -B build -DLIBDEFLATE_BUILD_TESTS=1
     - run: cmake --build build --verbose
     - run: DESTDIR=build/install cmake --install build --verbose
@@ -73,7 +84,7 @@ jobs:
     env:
       CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: msys2/setup-msys2@v2
       with:
         msystem: ${{matrix.sys}}
@@ -105,7 +116,7 @@ jobs:
         - {os: windows-2019, gen: "Visual Studio 16 2019", toolset: v142,    vs: Win32, vcpkg: x86-windows}
     runs-on: ${{matrix.os}}
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: microsoft/setup-msbuild@v1.1
     - run: vcpkg install zlib:${{matrix.vcpkg}}
     - run: >
@@ -133,7 +144,7 @@ jobs:
           toolset: ClangCL
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: microsoft/setup-msbuild@v1.1
     # Note: as per the CMake documentation, DESTDIR is unsupported on Windows.
     - run: >
@@ -147,7 +158,7 @@ jobs:
     name: Run clang static analyzer
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -159,7 +170,7 @@ jobs:
     name: Run shellcheck
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -173,7 +184,7 @@ jobs:
     env:
       CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -203,7 +214,7 @@ jobs:
     env:
       CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - run: |
         scripts/cmake-helper.sh \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_LATEST_HOME"/build/cmake/android.toolchain.cmake \
@@ -217,7 +228,7 @@ jobs:
     name: Test building adler32.c and crc32.c with various flags
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -268,7 +279,7 @@ jobs:
           sanitizer:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install dependencies
       run: |
         sudo apt-get update
